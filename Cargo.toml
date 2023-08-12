@@ -1,6 +1,6 @@
 [package]
     name = "sqlayout"
-    version = "0.1.2"
+    version = "0.1.3"
     edition = "2021"
     authors = ["Xtrem532"]
     license = "LGPL-2.1-only"
@@ -12,16 +12,16 @@
     repository = "https://github.com/Xtrem532/sqlayout"
 
 [features]
-    default = []
     xml-config = ["dep:quick-xml", "dep:serde"]
+    rusqlite = ["dep:rusqlite"]
 
 [dependencies]
     thiserror = "1"
     quick-xml = { version = "0.30", features = ["serialize"], optional = true}
     serde = { version = "1", features = ["derive"], optional = true}
+    rusqlite = { version = "0.29", features = ["bundled"], optional = true}
 
 [dev-dependencies]
-    rusqlite = { version = "0.29", features = ["bundled"]}
     anyhow = "1"
 
 [lib]

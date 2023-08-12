@@ -1,10 +1,13 @@
 use thiserror::Error;
+#[cfg(feature = "rusqlite")]
+use rusqlite::{Error as RusqliteError};
+#[cfg(feature = "rusqlite")]
+use std::fmt::{Error as FmtError};
 
 /// Errors for all Structs and Functions in this Crate.
 #[derive(Error, Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-
     /// Error used when a [ForeignKey](crate::ForeignKey) has a empty `foreign_table` Name
     #[error("Foreign Table Name cannot be Empty")]
     EmptyForeignTableName,
@@ -45,7 +48,19 @@ pub enum Error {
 
     /// Error used when a [Schema](crate::Schema) has no [Tables](crate::Table)
     #[error("Schema must contain Tables")]
-    SchemaWithoutTables
+    SchemaWithoutTables,
+}
+
+#[cfg(feature = "rusqlite")]
+#[derive(Error, Debug, PartialEq)]
+pub enum CheckError {
+    /// Error pass though when a [RusqliteError](rusqlite::Error) occurs
+    #[error(transparent)]
+    RusqliteError(#[from] RusqliteError),
+
+    /// Error pass though a [FmtError](std::fmt::Error) occurs
+    #[error(transparent)]
+    FmtError(#[from] FmtError),
 }
 
 /// Result type used in this crate, Error type is [Error](enum@crate::error::Error)

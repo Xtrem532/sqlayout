@@ -5,13 +5,21 @@
 //!
 //! todo
 
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 mod error;
 
 #[cfg(feature = "xml-config")]
 use serde::{Serialize, Deserialize};
 
+#[cfg(feature = "rusqlite")]
+use rusqlite::{Connection, Rows, Statement, Row};
+#[cfg(feature = "rusqlite")]
+use std::fmt::Write;
+
 pub use error::{Error, Result};
+
+#[cfg(feature = "rusqlite")]
+use crate::error::CheckError;
 
 // this cannot be in the test mod b/c it is needed for the test trait impls (SQLPart::possibilities)
 #[cfg(test)]
@@ -956,6 +964,56 @@ impl Schema {
         self.tables.push(new_table);
         self
     }
+
+    /// Checks the given DB for deviations from the given Schema
+    /// todo: document return
+    #[cfg(feature = "rusqlite")]
+    pub fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError> {
+        self.tables.sort_unstable_by_key(| table: &Table | table.name.clone()); // todo ugly :(
+
+        let mut ret: String = String::new();
+
+        let mut stmt: Statement = conn.prepare(r#"SELECT name, ncol, wr, strict FROM pragma_table_list() WHERE (schema == "main") AND (type == "table") AND name NOT LIKE "%schema" ORDER BY name;"#)?;
+        let mut rows: Rows = stmt.query(())?;
+
+
+        for( num, table) in self.tables.iter().enumerate() {
+            let row: &Row = {
+                let raw_row = rows.next()?;
+                match raw_row {
+                    None => {
+                        write!(ret, "Table {}: expected table '{}', got nothing; ", num, table.name)?;
+                        break
+                    }
+                    Some(row) => { row }
+                }
+            };
+            if table.name != row.get::<&str, String>("name")? {
+                write!(ret, "Table {}: expected name '{}', got '{}'; ", num, table.name, row.get::<&str, String>("name")?)?;
+            }
+            if table.without_rowid != row.get::<&str, bool>("wr")? {
+                write!(ret, "Table {}: expected without_rowid {}, got {}; ", num, table.without_rowid, row.get::<&str, bool>("wr")?)?;
+            }
+            if table.strict != row.get::<&str, bool>("strict")? {
+                write!(ret, "Table {}: expected strict {}, got {}; ", num, table.strict, row.get::<&str, bool>("strict")?)?;
+            }
+            if table.columns.len() != row.get::<&str, usize>("ncol")? {
+                write!(ret, "Table {}: expected number of columns {}, got {}; ", num, table.columns.len(), row.get::<&str, usize>("ncol")?)?;
+            }
+        }
+
+        let mut i: usize = self.tables.len();
+        while let Some(row) = rows.next()? {
+            write!(ret, "Table {}: expected nothing, got table '{}'; ", i, row.get::<&str, String>("name")?)?;
+            i += 1;
+        }
+
+        if ret.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ret))
+        }
+    }
 }
 
 impl SQLStatement for Schema {
@@ -1008,7 +1066,6 @@ impl PartialEq<Schema> for Schema {
 mod tests {
     use super::*;
     use anyhow::Result;
-    use rusqlite::Connection;
 
     fn test_sql<S: SQLStatement>(stmt: &mut S) -> Result<()> {
         for if_exists in [true, false] {
@@ -1342,5 +1399,10 @@ mod tests {
             assert_eq!(schema, deserialized);
             Ok(())
         }
+    }
+
+    #[cfg(feature = "rusqlite")]
+    mod rusqlite {
+        // todo
     }
 }
