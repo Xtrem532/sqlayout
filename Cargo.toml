@@ -8,7 +8,7 @@
     readme = "readme.md"
     keywords = ["SQL", "SQLite", "Databse", "Schema"]
     categories = ["database", "config"]
-    exclude = ["*.xml"]
+    exclude = ["*.xml", "/.idea"]
     repository = "https://github.com/Xtrem532/sqlayout"
 
 [features]
