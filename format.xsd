@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="https://crates.io/crates/sqlayout"
+           elementFormDefault="qualified">
+  <!--region Enums-->
+
+  <xs:simpleType name="non_empty_string">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <!--https://regex101.com/r/aWpakM/1-->
+      <xs:pattern value="(?!sqlite_)[a-zA-Z_].*"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="type">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="blob"/>
+      <xs:enumeration value="numeric"/>
+      <xs:enumeration value="integer"/>
+      <xs:enumeration value="real"/>
+      <xs:enumeration value="text"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="order">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Ascending"/>
+      <xs:enumeration value="Descending"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="on_conflict_typ">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Rollback"/>
+      <xs:enumeration value="Abort"/>
+      <xs:enumeration value="Fail"/>
+      <xs:enumeration value="Ignore"/>
+      <xs:enumeration value="Replace"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="on_action">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Set Null"/>
+      <xs:enumeration value="Set Default"/>
+      <xs:enumeration value="Cascade"/>
+      <xs:enumeration value="Restrict"/>
+      <xs:enumeration value="No Action"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!--endregion-->
+
+  <xs:attribute name="on_conflict" type="on_conflict_typ"/>
+
+  <xs:complexType name="pk">
+    <xs:attribute name="order" type="order" use="optional"/>
+    <xs:attribute ref="on_conflict" use="optional"/>
+    <xs:attribute name="autoincrement" type="xs:boolean" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="fk">
+    <xs:attribute name="foreign_table" type="non_empty_string" use="required"/>
+    <xs:attribute name="foreign_column" type="non_empty_string" use="required"/>
+    <xs:attribute name="on_delete" type="on_action" use="optional"/>
+    <xs:attribute name="on_update" type="on_action" use="optional"/>
+    <xs:attribute name="deferrable" type="xs:boolean" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="unique">
+    <xs:attribute ref="on_conflict" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="column">
+    <xs:all>
+      <xs:element name="pk" type="pk" minOccurs="0"/>
+      <xs:element name="fk" type="fk" minOccurs="0"/>
+      <xs:element name="unique" type="unique" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="name" type="non_empty_string" use="required"/>
+    <xs:attribute name="type" type="type" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="table">
+    <xs:sequence>
+      <xs:element name="column" type="column" minOccurs="1" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="non_empty_string" use="required"/>
+    <xs:attribute name="without_rowid" type="xs:boolean" use="optional"/>
+    <xs:attribute name="strict" type="xs:boolean" use="optional"/>
+  </xs:complexType>
+
+  <xs:element name="schema">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="table" type="table" minOccurs="1" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

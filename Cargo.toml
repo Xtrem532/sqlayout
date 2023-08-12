@@ -1,0 +1,28 @@
+[package]
+    name = "sqlayout"
+    version = "0.1.0"
+    edition = "2021"
+    authors = ["Xtrem532"]
+    license = "LGPL-2.1-only"
+    description = "Generates SQL-code for creating SQLite databases vie API or XML config"
+    readme = "readme.md"
+    keywords = ["SQL", "SQLite", "Databse", "Schema"]
+    categories = ["database", "config"]
+    exclude = ["*.xml"]
+
+[features]
+    default = []
+    xml-config = ["dep:quick-xml", "dep:serde"]
+
+[dependencies]
+    thiserror = "1"
+    quick-xml = { version = "0.30", features = ["serialize"], optional = true}
+    serde = { version = "1", features = ["derive"], optional = true}
+
+[dev-dependencies]
+    rusqlite = { version = "0.29", features = ["bundled"]}
+    anyhow = "1"
+
+[lib]
+    path = "src/lib.rs"
+    crate-type = ["rlib"]
