@@ -1,8 +1,5 @@
 //! A Library for generating SQLite-specific SQL to Initialize Databases (as in `CREATE TABLE...`).
-//! SQLite Interface agnostic, e.g. can be used with [rusqlite], [sqlite] or any other SQLite Interface.
-//!
-//! [rusqlite]: https://github.com/rusqlite/rusqlite
-//! [sqlite]: https://github.com/stainless-steel/sqlite
+//! SQLite Interface agnostic, e.g. can be used with [rusqlite](https://github.com/rusqlite/rusqlite), [sqlite](https://github.com/stainless-steel/sqlite) or any other SQLite Interface.
 //!
 //! # xml-config
 //!
@@ -38,13 +35,20 @@ trait SQLPart {
     fn possibilities(illegal_variants: bool) -> Vec<Box<Self>>;
 }
 
-///
+/// Any struct Implementing this trait can be converted into a SQL statement [String].
+/// Optionally, the statement can be wrapped in a SQL Transaction and/or guarded against already existing Tables with a `...IF NOT EXISTS...` guard.
 pub trait SQLStatement {
-    /// Calculates the exact length of the statement as it is currently configurated.
-    /// Any change to the configuration invalidates all previously calculated lengths.
+    /// Calculates the exact length of the statement as it is currently configured.
+    /// Any change to the configuration invalidates previously calculated lengths.
+    /// Parameters are the same as in [SQLStatement::build].
     fn len(&mut self, transaction: bool, if_exists: bool) -> Result<usize>;
 
-    /// Builds the
+    /// Builds the SQL Statement as a [String].
+    ///
+    /// Arguments:
+    ///
+    /// * `transaction`: Weather the SQL-Statement should be wrapped in a SQL-Transaction
+    /// * `if_exists`: Weather the `CREATE TABLE...` Statement should include a `...IF NOT EXISTS...` guard
     fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String>;
 
     // todo: for no-std
@@ -55,11 +59,10 @@ pub trait SQLStatement {
 
 // region SQLiteType
 
-/// Encodes all Column-Datatypes available in SQLite, see also [here]
-///
-/// [here]: https://www.sqlite.org/datatype3.html#type_affinity
+/// Encodes all Column-Datatypes available in SQLite, see [here](https://www.sqlite.org/datatype3.html#type_affinity).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[allow(missing_docs)]
 pub enum SQLiteType {
     // ref. https://www.sqlite.org/datatype3.html#type_affinity
     Blob,
@@ -108,9 +111,10 @@ impl SQLPart for SQLiteType {
 
 // region Order
 
-/// [PrimaryKey] Direction
+/// [PrimaryKey] direction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[allow(missing_docs)]
 pub enum Order {
     Ascending,
     Descending
@@ -148,9 +152,11 @@ impl SQLPart for Order {
 
 // region OnConflict
 
-/// Reaction to a violated Constraint, used by [PrimaryKey], [NotNull] and [Unique]
+/// Reaction to a violated Constraint, used by [PrimaryKey], [NotNull] and [Unique].
+/// See also [here](https://www.sqlite.org/lang_conflict.html)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[allow(missing_docs)]
 pub enum OnConflict {
     Rollback,
     Abort,
@@ -199,8 +205,10 @@ impl SQLPart for OnConflict {
 // region FK OnAction
 
 /// Reaction to an action on a Column with a [ForeignKey]
+/// See also [here](https://www.sqlite.org/foreignkeys.html#fk_actions)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
+#[allow(missing_docs)]
 pub enum FKOnAction {
     SetNull,
     SetDefault,
@@ -320,7 +328,7 @@ impl SQLPart for PrimaryKey {
 
 // region Not Null
 
-/// Marks a [Column] as "Not NULL", e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is a Error.
+/// Marks a [Column] as `NOT NULL`, e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is a Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct NotNull {
@@ -915,7 +923,7 @@ impl PartialEq<Table> for Table {
 
 // region Schema
 
-/// A Schema (or Layout, hence the crate name) encompasses One or more [Table]s.
+/// A Schema (or Layout, hence the crate name) encompasses one or more [Table]s.
 /// Can be converted into an SQL Statement via the [SQLStatement] Methods.
 /// It is a Error for the Schema to be empty ([Error::SchemaWithoutTables]).
 #[derive(Debug, Clone, Default, Eq)]
