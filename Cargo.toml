@@ -4,11 +4,12 @@
     edition = "2021"
     authors = ["Xtrem532"]
     license = "LGPL-2.1-only"
-    description = "Generates SQL-code for creating SQLite databases vie API or XML config"
+    description = "Generates SQL-code for creating SQLite databases via API or XML config"
     readme = "readme.md"
     keywords = ["SQL", "SQLite", "Databse", "Schema"]
     categories = ["database", "config"]
     exclude = ["*.xml"]
+    repository = "https://github.com/Xtrem532/sqlayout"
 
 [features]
     default = []
