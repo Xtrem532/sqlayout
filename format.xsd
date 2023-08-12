@@ -7,8 +7,8 @@
   <xs:simpleType name="non_empty_string">
     <xs:restriction base="xs:string">
       <xs:minLength value="1"/>
-      <!--https://regex101.com/r/aWpakM/1-->
-      <xs:pattern value="(?!sqlite_)[a-zA-Z_].*"/>
+      <!-- https://regex101.com/r/aWpakM/1 (remove '^' and '$', they are implied in XML patterns) -->
+      <xs:pattern value="(?!sqlite_)[a-zA-Z_]+"/>
     </xs:restriction>
   </xs:simpleType>
 
