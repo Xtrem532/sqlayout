@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// Errors for all Structs and Functions in this Crate.
 #[derive(Error, Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {

@@ -1,10 +1,22 @@
+//! A Library for generating SQLite-specific SQL to Initialize Databases (as in `CREATE TABLE...`).
+//! SQLite Interface agnostic, e.g. can be used with [rusqlite], [sqlite] or any other SQLite Interface.
+//!
+//! [rusqlite]: https://github.com/rusqlite/rusqlite
+//! [sqlite]: https://github.com/stainless-steel/sqlite
+//!
+//! # xml-config
+//!
+//! todo
+
+#![warn(missing_docs)]
 mod error;
 
 #[cfg(feature = "xml-config")]
 use serde::{Serialize, Deserialize};
 
-use error::{Error, Result};
+pub use error::{Error, Result};
 
+// this cannot be in the test mod b/c it is needed for the test trait impls (SQLPart::possibilities)
 #[cfg(test)]
 fn option_iter<T: Clone>(input: Vec<Box<T>>) -> Vec<Option<T>> {
     let mut ret: Vec<Option<T>> = input.iter().map(|boxed| Some(*boxed.clone())).collect::<Vec<Option<T>>>();
@@ -26,9 +38,13 @@ trait SQLPart {
     fn possibilities(illegal_variants: bool) -> Vec<Box<Self>>;
 }
 
+///
 pub trait SQLStatement {
+    /// Calculates the exact length of the statement as it is currently configurated.
+    /// Any change to the configuration invalidates all previously calculated lengths.
     fn len(&mut self, transaction: bool, if_exists: bool) -> Result<usize>;
 
+    /// Builds the
     fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String>;
 
     // todo: for no-std
@@ -39,6 +55,9 @@ pub trait SQLStatement {
 
 // region SQLiteType
 
+/// Encodes all Column-Datatypes available in SQLite, see also [here]
+///
+/// [here]: https://www.sqlite.org/datatype3.html#type_affinity
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
 pub enum SQLiteType {
@@ -89,6 +108,7 @@ impl SQLPart for SQLiteType {
 
 // region Order
 
+/// [PrimaryKey] Direction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
 pub enum Order {
@@ -128,6 +148,7 @@ impl SQLPart for Order {
 
 // region OnConflict
 
+/// Reaction to a violated Constraint, used by [PrimaryKey], [NotNull] and [Unique]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
 pub enum OnConflict {
@@ -177,6 +198,7 @@ impl SQLPart for OnConflict {
 
 // region FK OnAction
 
+/// Reaction to an action on a Column with a [ForeignKey]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub enum FKOnAction {
@@ -226,6 +248,8 @@ impl SQLPart for FKOnAction {
 
 // region Primary Key
 
+/// Marks a Column as a Primary Key.
+/// It is an Error to have more than one Primary Key per [Table] ([Error::MultiplePrimaryKeys]).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct PrimaryKey {
@@ -296,6 +320,7 @@ impl SQLPart for PrimaryKey {
 
 // region Not Null
 
+/// Marks a [Column] as "Not NULL", e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is a Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct NotNull {
@@ -341,6 +366,7 @@ impl SQLPart for NotNull {
 
 // region Unique
 
+/// Marks a [Column] as "Unique", e.g. the Column cannot contain the same value twice and trying to insert a value for the second time is a Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Unique {
@@ -386,6 +412,7 @@ impl SQLPart for Unique {
 
 // region Foreign Key
 
+/// Defines a Foreign Key for a [Column]. It is a Error for the `foreign_table` and `foreign_column` [String]s to be Empty ([Error::EmptyForeignTableName], [Error::EmptyForeignColumnName]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct ForeignKey {
@@ -524,6 +551,7 @@ impl SQLPart for ForeignKey {
 
 // region Column
 
+/// This struct Represents a Column in a [Table]. It is a Error for the `name` to be Empty ([Error::EmptyColumnName]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Column {
@@ -675,6 +703,9 @@ impl SQLPart for Column {
 
 // region Table
 
+/// Represents an entire Table, which may be Part of a wider [Schema] or used standalone.
+/// Can be converted into an SQL Statement via the [SQLStatement] Methods.
+/// It is a Error for the `name` to be empty ([Error::EmptyTableName]) or the Table itself to be empty ([Error::NoColumns]).
 #[derive(Debug, Clone, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Table {
@@ -884,6 +915,9 @@ impl PartialEq<Table> for Table {
 
 // region Schema
 
+/// A Schema (or Layout, hence the crate name) encompasses One or more [Table]s.
+/// Can be converted into an SQL Statement via the [SQLStatement] Methods.
+/// It is a Error for the Schema to be empty ([Error::SchemaWithoutTables]).
 #[derive(Debug, Clone, Default, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename = "schema"))]
 pub struct Schema {
