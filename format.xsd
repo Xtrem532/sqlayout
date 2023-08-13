@@ -71,11 +71,16 @@
     <xs:attribute ref="on_conflict" use="optional"/>
   </xs:complexType>
 
+  <xs:complexType name="not_null">
+    <xs:attribute ref="on_conflict" use="optional"/>
+  </xs:complexType>
+
   <xs:complexType name="column">
     <xs:all>
       <xs:element name="pk" type="pk" minOccurs="0"/>
       <xs:element name="fk" type="fk" minOccurs="0"/>
       <xs:element name="unique" type="unique" minOccurs="0"/>
+      <xs:element name="not_null" type="not_null" minOccurs="0"/>
     </xs:all>
     <xs:attribute name="name" type="non_empty_string" use="required"/>
     <xs:attribute name="type" type="type" use="required"/>

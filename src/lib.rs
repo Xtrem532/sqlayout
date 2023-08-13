@@ -581,6 +581,8 @@ pub struct Column {
     unique: Option<Unique>,
     #[cfg_attr(feature = "xml-config", serde(skip_serializing_if = "Option::is_none"))]
     fk: Option<ForeignKey>,
+    #[cfg_attr(feature = "xml-config", serde(skip_serializing_if = "Option::is_none"))]
+    not_null: Option<NotNull>,
     // todo Generated Column
 }
 
@@ -601,13 +603,14 @@ impl Column {
         Ok(())
     }
 
-    pub fn new(typ: SQLiteType, name: String, pk: Option<PrimaryKey>, unique: Option<Unique>, fk: Option<ForeignKey>) -> Self {
+    pub fn new(typ: SQLiteType, name: String, pk: Option<PrimaryKey>, unique: Option<Unique>, fk: Option<ForeignKey>, not_null: Option<NotNull>) -> Self {
         Self {
             typ,
             name,
             pk,
             unique,
             fk,
+            not_null,
         }
     }
 
@@ -618,6 +621,18 @@ impl Column {
             pk: Default::default(),
             unique: Default::default(),
             fk: Default::default(),
+            not_null: Default::default(),
+        }
+    }
+
+    pub fn new_typed(typ: SQLiteType, name: String) -> Self {
+        Self {
+            typ,
+            name,
+            pk: Default::default(),
+            unique: Default::default(),
+            fk: Default::default(),
+            not_null: Default::default(),
         }
     }
 
@@ -702,10 +717,12 @@ impl SQLPart for Column {
                 for pk in option_iter(PrimaryKey::possibilities(false)) {
                     for unique in option_iter(Unique::possibilities(false)) {
                         for fk in option_iter(ForeignKey::possibilities(false)) {
-                            if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
-                                continue
-                            } 
-                            ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk)));
+                            for nn in option_iter(NotNull::possibilities(false)) {
+                                if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
+                                    continue
+                                }
+                                ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn)));
+                            }
                         }
                     }
                 }
@@ -1067,6 +1084,7 @@ mod tests {
     use super::*;
     use anyhow::Result;
 
+    #[cfg(feature = "rusqlite")]
     fn test_sql<S: SQLStatement>(stmt: &mut S) -> Result<()> {
         for if_exists in [true, false] {
             for transaction in [true, false] {
@@ -1083,6 +1101,12 @@ mod tests {
             }
         }
 
+        Ok(())
+    }
+
+    #[cfg(not(feature = "rusqlite"))]
+    fn test_sql<S: SQLStatement>(_stmt: &mut S) -> Result<()> {
+        // todo
         Ok(())
     }
 
@@ -1307,16 +1331,18 @@ mod tests {
             for pk in [None, Some(PrimaryKey::default())] {
                 for uniq in [None, Some(Unique::default())] {
                     for fk in [None, Some(ForeignKey::new_default("test".to_string(), "test".to_string()))] {
-                        assert_eq!(Column::new(typ, "".to_string(),Clone::clone(&pk), uniq, Clone::clone(&fk)).part_len(), Err(Error::EmptyColumnName));
+                        for nn in [None, Some(NotNull::default())] {
+                            assert_eq!(Column::new(typ, "".to_string(),Clone::clone(&pk), uniq, Clone::clone(&fk), nn).part_len(), Err(Error::EmptyColumnName));
 
-                        let col: Column = Column::new(typ, "test".to_string(), Clone::clone(&pk), uniq, Clone::clone(&fk));
+                            let col: Column = Column::new(typ, "test".to_string(), Clone::clone(&pk), uniq, Clone::clone(&fk), nn);
 
-                        if col.pk.is_some() && col.fk.is_some() {
-                            assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndForeignKey));
-                        } else if col.pk.is_some() && col.unique.is_some() {
-                            assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndUnique));
-                        } else {
-                            test_sql_part(&col)?;
+                            if col.pk.is_some() && col.fk.is_some() {
+                                assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndForeignKey));
+                            } else if col.pk.is_some() && col.unique.is_some() {
+                                assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndUnique));
+                            } else {
+                                test_sql_part(&col)?;
+                            }
                         }
                     }
                 }
@@ -1388,7 +1414,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_serialize() -> Result<()> {
+        fn test_serialize_deserialize() -> Result<()> {
             let tbl = Table::new_default("TestName".to_string()).add_column(Column::new_default("TestCol".to_string()));
             let tbl2  = tbl.clone().set_name("TestName2".to_string());
             let schema = Schema::new().add_table(tbl).add_table(tbl2);
