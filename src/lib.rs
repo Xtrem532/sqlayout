@@ -440,7 +440,7 @@ pub struct ForeignKey {
     on_delete: Option<FKOnAction>,
     #[cfg_attr(feature = "xml-config", serde(rename = "@on_update"))]
     on_update: Option<FKOnAction>,
-    #[cfg_attr(feature = "xml-config", serde(rename = "@deferrable"))]
+    #[cfg_attr(feature = "xml-config", serde(rename = "@deferrable", default))]
     deferrable: bool,
 }
 
@@ -746,9 +746,9 @@ pub struct Table {
     name: String,
     #[cfg_attr(feature = "xml-config", serde(rename = "column"))]
     columns: Vec<Column>,
-    #[cfg_attr(feature = "xml-config", serde(rename = "@without_rowid"))]
+    #[cfg_attr(feature = "xml-config", serde(rename = "@without_rowid", default))]
     without_rowid: bool,
-    #[cfg_attr(feature = "xml-config", serde(rename = "@strict"))]
+    #[cfg_attr(feature = "xml-config", serde(rename = "@strict", default))]
     strict: bool,
     #[cfg_attr(feature = "xml-config", serde(skip))]
     pub(crate) if_exists: bool,
@@ -1423,6 +1423,91 @@ mod tests {
             println!("Serialized XML: \n{}", serialized);
             let deserialized: Schema = quick_xml::de::from_str(serialized)?;
             assert_eq!(schema, deserialized);
+            Ok(())
+        }
+
+        #[test]
+        fn some_test() -> Result<()> {
+            let raw: &str = r#"
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<schema xmlns="https://crates.io/crates/sqlayout">
+
+  <!-- Card data -->
+  <table name="updates" strict="true">
+    <column name="ID" type="integer">
+      <pk/>
+      <not_null/>
+    </column>
+    <column name="timestamp" type="integer">
+      <not_null/>
+    </column>
+    <column name="guid" type="text">
+      <not_null/>
+      <unique/>
+    </column>
+  </table>
+
+  <table name="migrations" strict="true">
+    <column name="ID" type="integer">
+      <pk/>
+      <not_null/>
+    </column>
+    <column name="timestamp" type="integer">
+      <not_null/>
+    </column>
+    <column name="GUID" type="text">
+      <not_null/>
+      <unique/>
+    </column>
+  </table>
+
+  <table name="card_data" strict="true">
+    <column name="ID" type="integer">
+      <pk/>
+      <not_null/>
+    </column>
+  </table>
+
+  <!-- Collection Data -->
+  <table name="card_location" strict="true">
+    <column name="ID" type="integer">
+      <pk/>
+      <not_null/>
+    </column>
+    <column name="name" type="text">
+      <not_null/>
+    </column>
+    <column name="description" type="text"/>
+  </table>
+
+  <table name="card_collection" strict="true">
+    <column name="ID" type="integer">
+      <pk/>
+      <not_null/>
+    </column>
+    <column name="card_ID" type="integer">
+      <fk foreign_table="card_data" foreign_column="ID"/>
+      <not_null/>
+    </column>
+    <column name="count" type="integer">
+      <not_null/>
+    </column>
+    <column name="finish" type="integer">
+      <!-- enum -->
+      <not_null/>
+    </column>
+    <column name="condition" type="integer">
+      <!-- enum -->
+    </column>
+    <column name="location" type="integer">
+      <fk foreign_table="card_location" foreign_column="ID"/>
+      <not_null/>
+    </column>
+    <column name="location_page" type="integer"/>
+  </table>
+</schema>
+"#;
+            let _: Schema = quick_xml::de::from_str(raw)?;
             Ok(())
         }
     }
