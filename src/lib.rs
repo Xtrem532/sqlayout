@@ -46,7 +46,7 @@ trait SQLPart {
     fn possibilities(illegal_variants: bool) -> Vec<Box<Self>>;
 }
 
-/// Any struct Implementing this trait can be converted into a SQL statement [String].
+/// Any struct implementing this trait can be converted into a SQL statement [String].
 /// Optionally, the statement can be wrapped in a SQL Transaction and/or guarded against already existing Tables with a `...IF NOT EXISTS...` guard.
 pub trait SQLStatement {
     /// Calculates the exact length of the statement as it is currently configured.
@@ -299,8 +299,8 @@ impl PrimaryKey {
         self
     }
 
-    pub fn set_autoincrement(mut self, autoinc: bool) -> Self {
-        self.autoincrement = autoinc;
+    pub fn set_autoincrement(mut self, auto_inc: bool) -> Self {
+        self.autoincrement = auto_inc;
         self
     }
 }
@@ -326,8 +326,8 @@ impl SQLPart for PrimaryKey {
         let mut ret: Vec<Box<Self>> = Vec::new();
         for so in Order::possibilities(false) {
             for conf in OnConflict::possibilities(false) {
-                for autoinc in [true, false] {
-                    ret.push(Box::new(Self::new(*so, *conf, autoinc)))
+                for auto_inc in [true, false] {
+                    ret.push(Box::new(Self::new(*so, *conf, auto_inc)))
                 }
             }
         }
@@ -339,7 +339,7 @@ impl SQLPart for PrimaryKey {
 
 // region Not Null
 
-/// Marks a [Column] as `NOT NULL`, e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is a Error.
+/// Marks a [Column] as `NOT NULL`, e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is an Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct NotNull {
@@ -385,7 +385,7 @@ impl SQLPart for NotNull {
 
 // region Unique
 
-/// Marks a [Column] as "Unique", e.g. the Column cannot contain the same value twice and trying to insert a value for the second time is a Error.
+/// Marks a [Column] as "Unique", e.g. the Column cannot contain the same value twice and trying to insert a value for the second time is an Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Unique {
@@ -431,7 +431,7 @@ impl SQLPart for Unique {
 
 // region Foreign Key
 
-/// Defines a Foreign Key for a [Column]. It is a Error for the `foreign_table` and `foreign_column` [String]s to be Empty ([Error::EmptyForeignTableName], [Error::EmptyForeignColumnName]).
+/// Defines a Foreign Key for a [Column]. It is an Error for the `foreign_table` and `foreign_column` [String]s to be Empty ([Error::EmptyForeignTableName], [Error::EmptyForeignColumnName]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct ForeignKey {
@@ -570,7 +570,7 @@ impl SQLPart for ForeignKey {
 
 // region Column
 
-/// This struct Represents a Column in a [Table]. It is a Error for the `name` to be Empty ([Error::EmptyColumnName]).
+/// This struct Represents a Column in a [Table]. It is an Error for the `name` to be Empty ([Error::EmptyColumnName]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Column {
@@ -741,7 +741,7 @@ impl SQLPart for Column {
 
 /// Represents an entire Table, which may be Part of a wider [Schema] or used standalone.
 /// Can be converted into an SQL Statement via the [SQLStatement] Methods.
-/// It is a Error for the `name` to be empty ([Error::EmptyTableName]) or the Table itself to be empty ([Error::NoColumns]).
+/// It is an Error for the `name` to be empty ([Error::EmptyTableName]) or the Table itself to be empty ([Error::NoColumns]).
 #[derive(Debug, Clone, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Table {
@@ -841,7 +841,7 @@ impl SQLPart for Table {
             + self.columns.len() - 1 // commas for cols, -1 b/c the last doesn't have a comma
             + 1 // ')'
             + self.without_rowid as usize * 14 // " WITHOUT ROWID"
-            + (self.without_rowid && self.strict) as usize * 1 // ','
+            + ((self.without_rowid && self.strict) as usize) // ','
             + self.strict as usize * 7 // " STRICT"
         )
     }
@@ -953,7 +953,7 @@ impl PartialEq<Table> for Table {
 
 /// A Schema (or Layout, hence the crate name) encompasses one or more [Table]s.
 /// Can be converted into an SQL Statement via the [SQLStatement] Methods.
-/// It is a Error for the Schema to be empty ([Error::SchemaWithoutTables]).
+/// It is an Error for the Schema to be empty ([Error::SchemaWithoutTables]).
 #[derive(Debug, Clone, Default, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename = "schema"))]
 pub struct Schema {
@@ -1039,12 +1039,12 @@ impl Schema {
 impl SQLStatement for Schema {
     fn len(&mut self, transaction: bool, if_exists: bool) -> Result<usize> {
         self.check()?;
-        let mut tbls_len: usize = 0;
+        let mut tables_len: usize = 0;
         for tbl in &mut self.tables {
             tbl.if_exists = if_exists;
-            tbls_len += tbl.part_len()?;
+            tables_len += tbl.part_len()?;
         }
-        Ok(transaction as usize * 7 + tbls_len + self.tables.len() + transaction as usize * 5)
+        Ok(transaction as usize * 7 + tables_len + self.tables.len() + transaction as usize * 5)
     }
 
     fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String> {
@@ -1304,8 +1304,8 @@ mod tests {
     fn test_primary_key() -> Result<()> {
         for so in [Order::Ascending, Order::Descending] {
             for conf in [OnConflict::Rollback, OnConflict::Abort, OnConflict::Fail, OnConflict::Ignore, OnConflict::Replace] {
-                for autoinc in [true, false] {
-                    test_sql_part(&PrimaryKey::new(so, conf, autoinc))?;
+                for auto_inc in [true, false] {
+                    test_sql_part(&PrimaryKey::new(so, conf, auto_inc))?;
                 }
             }
         }

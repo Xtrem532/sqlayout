@@ -8,15 +8,15 @@ use std::fmt::{Error as FmtError};
 #[derive(Error, Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    /// Error used when a [ForeignKey](crate::ForeignKey) has a empty `foreign_table` Name
+    /// Error used when a [ForeignKey](crate::ForeignKey) has an empty `foreign_table` Name
     #[error("Foreign Table Name cannot be Empty")]
     EmptyForeignTableName,
 
-    /// Error used when a [ForeignKey](crate::ForeignKey) has a empty `foreign_column` Name
+    /// Error used when a [ForeignKey](crate::ForeignKey) has an empty `foreign_column` Name
     #[error("Foreign Column Name cannot be Empty")]
     EmptyForeignColumnName,
 
-    /// Error used when a [Column](crate::Column) has a empty `name`
+    /// Error used when a [Column](crate::Column) has an empty `name`
     #[error("Column Name cannot be Empty")]
     EmptyColumnName,
 
@@ -29,7 +29,7 @@ pub enum Error {
     #[error("Primary Key implies Unique")]
     PrimaryKeyAndUnique,
 
-    /// Error used when a [Table](crate::Table) has a empty `name`
+    /// Error used when a [Table](crate::Table) has an empty `name`
     #[error("Table Name cannot be Empty")]
     EmptyTableName,
 
