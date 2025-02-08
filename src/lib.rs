@@ -15,7 +15,7 @@ use serde::{Serialize, Deserialize};
 pub use quick_xml::de::{from_str, from_reader};
 
 #[cfg(feature = "rusqlite")]
-use rusqlite::{Connection, Rows, Statement, Row, Error as RusqliteError};
+use rusqlite::{Connection, Rows, Statement, Row};
 #[cfg(feature = "rusqlite")]
 use std::fmt::Write;
 pub use error::{Error, Result};
