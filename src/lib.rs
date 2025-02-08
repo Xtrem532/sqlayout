@@ -5,7 +5,7 @@
 //!
 //! todo
 
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 mod error;
 
 #[cfg(feature = "xml-config")]
