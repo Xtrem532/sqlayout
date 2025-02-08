@@ -7,6 +7,7 @@ use std::fmt::{Error as FmtError};
 /// Errors for all Structs and Functions in this Crate.
 #[derive(Error, Debug, PartialEq)]
 #[allow(clippy::enum_variant_names)]
+#[non_exhaustive]
 pub enum Error {
     /// Error used when a [ForeignKey](crate::ForeignKey) has an empty `foreign_table` Name
     #[error("Foreign Table Name cannot be Empty")]
@@ -28,6 +29,10 @@ pub enum Error {
     /// (Primary Key implies Unique, see [here](https://www.sqlite.org/lang_createtable.html#unique_constraints))
     #[error("Primary Key implies Unique")]
     PrimaryKeyAndUnique,
+    
+    /// Error used when a [Generated](crate::Generated) [Column](crate::Column) has an empty Expression
+    #[error("Generator Expression cannot be empty")]
+    EmptyGeneratorExpr,
 
     /// Error used when a [Table](crate::Table) has an empty `name`
     #[error("Table Name cannot be Empty")]
@@ -63,5 +68,17 @@ pub enum CheckError {
     FmtError(#[from] FmtError),
 }
 
-/// Result type used in this crate, Error type is [Error](enum@crate::error::Error)
+#[cfg(feature = "rusqlite")]
+#[derive(Error, Debug, PartialEq)]
+pub enum ExecError {
+    /// Error pass though when a [RusqliteError](rusqlite::Error) occurs
+    #[error(transparent)]
+    RusqliteError(#[from] RusqliteError),
+
+    /// Error pass though when a [Error] occurs
+    #[error(transparent)]
+    Error(#[from] Error),
+}
+
+/// Result type used in this crate, Error type is [Error]
 pub type Result<T, E = Error> = std::result::Result<T, E>;

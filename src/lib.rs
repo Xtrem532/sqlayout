@@ -5,7 +5,7 @@
 //!
 //! todo
 
-//#![warn(missing_docs)]
+#![warn(missing_docs)]
 mod error;
 
 #[cfg(feature = "xml-config")]
@@ -15,14 +15,13 @@ use serde::{Serialize, Deserialize};
 pub use quick_xml::de::{from_str, from_reader};
 
 #[cfg(feature = "rusqlite")]
-use rusqlite::{Connection, Rows, Statement, Row};
+use rusqlite::{Connection, Rows, Statement, Row, Error as RusqliteError};
 #[cfg(feature = "rusqlite")]
 use std::fmt::Write;
-
 pub use error::{Error, Result};
 
 #[cfg(feature = "rusqlite")]
-use crate::error::CheckError;
+use crate::error::{CheckError, ExecError};
 
 // this cannot be in the test mod b/c it is needed for the test trait impls (SQLPart::possibilities)
 #[cfg(test)]
@@ -64,6 +63,21 @@ pub trait SQLStatement {
 
     // todo: for no-std
     // fn build_arr(&self, arr: &mut [u8], transaction: bool) -> Result<()>;
+
+    /// Executes the [SQLStatement] on the given [Connection]
+    #[cfg(feature = "rusqlite")]
+    fn execute(&mut self, transaction: bool, if_exists: bool, conn: &Connection) -> Result<(), ExecError> {
+        let sql: String = String::with_capacity(self.len(transaction, if_exists)?);
+        conn.execute_batch(sql.as_str())?;
+        Ok(())
+    }
+
+    /// Checks the given DB for deviations from the given SQL
+    /// If the check could not be completed, a [CheckError] is returned
+    /// If the check was completed but found discrepancies, a [String] with a human-readable Description is returned
+    /// If the check was completed and found no discrepancies, [None] is returned
+    #[cfg(feature = "rusqlite")]
+    fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError>;
 }
 
 // endregion
@@ -265,6 +279,47 @@ impl SQLPart for FKOnAction {
 
 // endregion
 
+// region Generated as
+
+/// Weather a generated column should store its values or compute them on every access
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
+#[allow(missing_docs)]
+pub enum GeneratedAs {
+    Virtual,
+    Stored,
+}
+
+impl Default for GeneratedAs {
+    fn default() -> Self {
+        Self::Virtual
+    }
+}
+
+impl SQLPart for GeneratedAs {
+    fn part_len(&self) -> Result<usize> {
+        Ok(match self {
+            GeneratedAs::Virtual => { 7 }
+            GeneratedAs::Stored => { 6 }
+        })
+    }
+
+    fn part_str(&self, sql: &mut String) -> Result<()> {
+        match self {
+            GeneratedAs::Virtual => { sql.push_str("VIRTUAL") }
+            GeneratedAs::Stored => { sql.push_str("STORED") }
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn possibilities(_: bool) -> Vec<Box<Self>> {
+        vec![Box::new(GeneratedAs::Virtual), Box::new(GeneratedAs::Stored)]
+    }
+}
+
+// endregion
+
 // region Primary Key
 
 /// Marks a Column as a Primary Key.
@@ -448,7 +503,7 @@ pub struct ForeignKey {
 }
 
 impl ForeignKey {
-    pub fn check(&self) -> Result<()> {
+    fn check(&self) -> Result<()> {
         if self.foreign_table.is_empty() {
             return Err(Error::EmptyForeignTableName);
         }
@@ -568,6 +623,92 @@ impl SQLPart for ForeignKey {
 
 // endregion
 
+// region Generated
+
+/// Defines a [Column] as Generated. It is an Error for the `expr` [String] to be Empty ([Error::EmptyGeneratorExpr])
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
+pub struct Generated {
+    #[cfg_attr(feature = "xml-config", serde(rename = "@expr"))]
+    expr: String,
+    #[cfg_attr(feature = "xml-config", serde(rename = "@as"))]
+    generated_as: Option<GeneratedAs>,
+}
+
+impl Generated {
+    fn check(&self) -> Result<()> {
+        if self.expr.is_empty() {
+            return Err(Error::EmptyGeneratorExpr)
+        }
+        Ok(())
+    }
+
+    pub fn new(expr: String, generated_as: Option<GeneratedAs>) -> Self {
+        Self {
+            expr,
+            generated_as
+        }
+    }
+
+    pub fn new_default(expr: String,) -> Self {
+        Self {
+            expr,
+            generated_as: Default::default(),
+        }
+    }
+
+    pub fn set_expr(mut self, expr: String) -> Self {
+        self.expr = expr;
+        self
+    }
+
+    pub fn set_generated_as(mut self, generated_as: Option<GeneratedAs>) -> Self {
+        self.generated_as = generated_as;
+        self
+    }
+}
+
+impl SQLPart for Generated {
+    fn part_len(&self) -> Result<usize> {
+        self.check()?;
+
+        let generated_as_len: usize = if let Some(generated_as) = self.generated_as.as_ref() {
+            generated_as.part_len()? + 1
+        } else {
+            0
+        };
+
+        Ok(21 + self.expr.len() + 1 + generated_as_len)
+    }
+
+    fn part_str(&self, sql: &mut String) -> Result<()> {
+        self.check()?;
+
+        sql.push_str("GENERATED ALWAYS AS (");
+        sql.push_str(self.expr.as_str());
+        sql.push(')');
+        if let Some(generated_as) = self.generated_as.as_ref() {
+            sql.push(' ');
+            generated_as.part_str(sql)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn possibilities(illegal: bool) -> Vec<Box<Self>> {
+        let mut ret: Vec<Box<Self>> = Vec::new();
+        for expr in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
+            for gen_as in option_iter(GeneratedAs::possibilities(false)) {
+                ret.push(Box::new(Self::new(expr.clone(), gen_as)));
+            }
+        }
+        ret
+    }
+}
+
+// endregion
+
 // region Column
 
 /// This struct Represents a Column in a [Table]. It is an Error for the `name` to be Empty ([Error::EmptyColumnName]).
@@ -586,7 +727,8 @@ pub struct Column {
     fk: Option<ForeignKey>,
     #[cfg_attr(feature = "xml-config", serde(skip_serializing_if = "Option::is_none"))]
     not_null: Option<NotNull>,
-    // todo Generated Column
+    #[cfg_attr(feature = "xml-config", serde(skip_serializing_if = "Option::is_none"))]
+    generated: Option<Generated>,
 }
 
 impl Column {
@@ -606,7 +748,7 @@ impl Column {
         Ok(())
     }
 
-    pub fn new(typ: SQLiteType, name: String, pk: Option<PrimaryKey>, unique: Option<Unique>, fk: Option<ForeignKey>, not_null: Option<NotNull>) -> Self {
+    pub fn new(typ: SQLiteType, name: String, pk: Option<PrimaryKey>, unique: Option<Unique>, fk: Option<ForeignKey>, not_null: Option<NotNull>, generated: Option<Generated>) -> Self {
         Self {
             typ,
             name,
@@ -614,6 +756,7 @@ impl Column {
             unique,
             fk,
             not_null,
+            generated,
         }
     }
 
@@ -625,6 +768,7 @@ impl Column {
             unique: Default::default(),
             fk: Default::default(),
             not_null: Default::default(),
+            generated: Default::default(),
         }
     }
 
@@ -636,6 +780,7 @@ impl Column {
             unique: Default::default(),
             fk: Default::default(),
             not_null: Default::default(),
+            generated: Default::default(),
         }
     }
 
@@ -719,12 +864,14 @@ impl SQLPart for Column {
             for name in [if illegal { "".to_string() } else { "test".to_string() } , "test".to_string()] {
                 for pk in option_iter(PrimaryKey::possibilities(false)) {
                     for unique in option_iter(Unique::possibilities(false)) {
-                        for fk in option_iter(ForeignKey::possibilities(false)) {
+                        for fk in option_iter(ForeignKey::possibilities(illegal)) {
                             for nn in option_iter(NotNull::possibilities(false)) {
-                                if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
-                                    continue
+                                for gen in option_iter(Generated::possibilities(illegal)) {
+                                    if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
+                                        continue
+                                    }
+                                    ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn, gen)));
                                 }
-                                ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn)));
                             }
                         }
                     }
@@ -904,6 +1051,23 @@ impl SQLPart for Table {
     }
 }
 
+#[cfg(feature = "rusqlite")]
+fn check_table(ret: &mut String, num: usize, tbl: &Table, row: &Row) -> Result<(), CheckError> {
+    if tbl.name != row.get::<&str, String>("name")? {
+        write!(ret, "Table {}: expected name '{}', got '{}'; ", num, tbl.name, row.get::<&str, String>("name")?)?;
+    }
+    if tbl.without_rowid != row.get::<&str, bool>("wr")? {
+        write!(ret, "Table {}: expected without_rowid {}, got {}; ", num, tbl.without_rowid, row.get::<&str, bool>("wr")?)?;
+    }
+    if tbl.strict != row.get::<&str, bool>("strict")? {
+        write!(ret, "Table {}: expected strict {}, got {}; ", num, tbl.strict, row.get::<&str, bool>("strict")?)?;
+    }
+    if tbl.columns.len() != row.get::<&str, usize>("ncol")? {
+        write!(ret, "Table {}: expected number of columns {}, got {}; ", num, tbl.columns.len(), row.get::<&str, usize>("ncol")?)?;
+    }
+    Ok(())
+}
+
 impl SQLStatement for Table {
     fn len(&mut self, transaction: bool, if_exists: bool) -> Result<usize> {
         self.if_exists = if_exists;
@@ -921,6 +1085,30 @@ impl SQLStatement for Table {
             str.push_str("\nEND;");
         }
         Ok(str)
+    }
+
+    #[cfg(feature = "rusqlite")]
+    fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError> {
+        let mut ret: String = String::new();
+
+        let mut stmt: Statement = conn.prepare(r#"SELECT name, ncol, wr, strict FROM pragma_table_list() WHERE (schema == "main") AND (type == "table") AND (name == ?1);"#)?;
+        let mut rows: Rows = stmt.query([&self.name])?;
+
+        if let Some(row) = rows.next()? {
+            check_table(&mut ret, 1, self, row)?;
+        } else {
+            write!(ret, "Could not find table '{}'", self.name)?;
+        }
+
+        if let Some(_) = rows.next()? {
+            write!(ret, "Found two Tables with name '{}'", self.name)?;
+        }
+
+        if ret.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ret))
+        }
     }
 }
 
@@ -984,56 +1172,6 @@ impl Schema {
         self.tables.push(new_table);
         self
     }
-
-    /// Checks the given DB for deviations from the given Schema
-    /// todo: document return
-    #[cfg(feature = "rusqlite")]
-    pub fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError> {
-        self.tables.sort_unstable_by_key(| table: &Table | table.name.clone()); // todo ugly :(
-
-        let mut ret: String = String::new();
-
-        let mut stmt: Statement = conn.prepare(r#"SELECT name, ncol, wr, strict FROM pragma_table_list() WHERE (schema == "main") AND (type == "table") AND name NOT LIKE "%schema" ORDER BY name;"#)?;
-        let mut rows: Rows = stmt.query(())?;
-
-
-        for( num, table) in self.tables.iter().enumerate() {
-            let row: &Row = {
-                let raw_row = rows.next()?;
-                match raw_row {
-                    None => {
-                        write!(ret, "Table {}: expected table '{}', got nothing; ", num, table.name)?;
-                        break
-                    }
-                    Some(row) => { row }
-                }
-            };
-            if table.name != row.get::<&str, String>("name")? {
-                write!(ret, "Table {}: expected name '{}', got '{}'; ", num, table.name, row.get::<&str, String>("name")?)?;
-            }
-            if table.without_rowid != row.get::<&str, bool>("wr")? {
-                write!(ret, "Table {}: expected without_rowid {}, got {}; ", num, table.without_rowid, row.get::<&str, bool>("wr")?)?;
-            }
-            if table.strict != row.get::<&str, bool>("strict")? {
-                write!(ret, "Table {}: expected strict {}, got {}; ", num, table.strict, row.get::<&str, bool>("strict")?)?;
-            }
-            if table.columns.len() != row.get::<&str, usize>("ncol")? {
-                write!(ret, "Table {}: expected number of columns {}, got {}; ", num, table.columns.len(), row.get::<&str, usize>("ncol")?)?;
-            }
-        }
-
-        let mut i: usize = self.tables.len();
-        while let Some(row) = rows.next()? {
-            write!(ret, "Table {}: expected nothing, got table '{}'; ", i, row.get::<&str, String>("name")?)?;
-            i += 1;
-        }
-
-        if ret.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(ret))
-        }
-    }
 }
 
 impl SQLStatement for Schema {
@@ -1063,6 +1201,43 @@ impl SQLStatement for Schema {
             ret.push_str("\nEND;")
         }
         Ok(ret)
+    }
+
+    #[cfg(feature = "rusqlite")]
+    fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError> {
+        self.tables.sort_unstable_by_key(| table: &Table | table.name.clone()); // todo ugly :(
+
+        let mut ret: String = String::new();
+
+        let mut stmt: Statement = conn.prepare(r#"SELECT name, ncol, wr, strict FROM pragma_table_list() WHERE (schema == "main") AND (type == "table") AND name NOT LIKE "%schema" ORDER BY name;"#)?;
+        let mut rows: Rows = stmt.query(())?;
+
+
+        for( num, table) in self.tables.iter().enumerate() {
+            let row: &Row = {
+                let raw_row = rows.next()?;
+                match raw_row {
+                    None => {
+                        write!(ret, "Table {}: expected table '{}', got nothing; ", num, table.name)?;
+                        break
+                    }
+                    Some(row) => { row }
+                }
+            };
+            check_table(&mut ret, num, table, row)?;
+        }
+
+        let mut i: usize = self.tables.len();
+        while let Some(row) = rows.next()? {
+            write!(ret, "Table {}: expected nothing, got table '{}'; ", i, row.get::<&str, String>("name")?)?;
+            i += 1;
+        }
+
+        if ret.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ret))
+        }
     }
 }
 
@@ -1236,6 +1411,23 @@ mod tests {
     }
 
     #[test]
+    fn test_generated_as() -> Result<()> {
+        let mut str: String;
+
+        str = String::new();
+        GeneratedAs::Virtual.part_str(&mut str)?;
+        assert_eq!(str, "VIRTUAL");
+        assert_eq!(str.len(), GeneratedAs::Virtual.part_len()?);
+
+        str = String::new();
+        GeneratedAs::Stored.part_str(&mut str)?;
+        assert_eq!(str, "STORED");
+        assert_eq!(str.len(), GeneratedAs::Stored.part_len()?);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_not_null() -> Result<()> {
         let mut str: String;
 
@@ -1329,22 +1521,36 @@ mod tests {
     }
 
     #[test]
+    fn test_generated() -> Result<()> {
+        for gen_as in [None, Some(GeneratedAs::Virtual), Some(GeneratedAs::Stored)] {
+            // todo: test string params
+            assert_eq!(Generated::new("".to_string(), gen_as).part_len(), Err(Error::EmptyGeneratorExpr));
+
+            test_sql_part(&Generated::new("test".to_string(), gen_as))?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn test_column() -> Result<()> {
         for typ in [SQLiteType::Blob, SQLiteType::Numeric, SQLiteType::Integer, SQLiteType::Real, SQLiteType::Text] {
             for pk in [None, Some(PrimaryKey::default())] {
                 for uniq in [None, Some(Unique::default())] {
                     for fk in [None, Some(ForeignKey::new_default("test".to_string(), "test".to_string()))] {
                         for nn in [None, Some(NotNull::default())] {
-                            assert_eq!(Column::new(typ, "".to_string(),Clone::clone(&pk), uniq, Clone::clone(&fk), nn).part_len(), Err(Error::EmptyColumnName));
+                            for gen in [None, Some(Generated::new_default("expr".to_string()))] {
+                                assert_eq!(Column::new(typ, "".to_string(), pk.clone(), uniq, fk.clone(), nn, gen.clone()).part_len(), Err(Error::EmptyColumnName));
 
-                            let col: Column = Column::new(typ, "test".to_string(), Clone::clone(&pk), uniq, Clone::clone(&fk), nn);
+                                let col: Column = Column::new(typ, "test".to_string(), pk.clone(), uniq, fk.clone(), nn, gen);
 
-                            if col.pk.is_some() && col.fk.is_some() {
-                                assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndForeignKey));
-                            } else if col.pk.is_some() && col.unique.is_some() {
-                                assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndUnique));
-                            } else {
-                                test_sql_part(&col)?;
+                                if col.pk.is_some() && col.fk.is_some() {
+                                    assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndForeignKey));
+                                } else if col.pk.is_some() && col.unique.is_some() {
+                                    assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndUnique));
+                                } else {
+                                    test_sql_part(&col)?;
+                                }
                             }
                         }
                     }
@@ -1426,6 +1632,17 @@ mod tests {
             println!("Serialized XML: \n{}", serialized);
             let deserialized: Schema = quick_xml::de::from_str(serialized)?;
             assert_eq!(schema, deserialized);
+            Ok(())
+        }
+
+        #[test]
+        fn test_top_level_table() -> Result<()> {
+            let raw: &str = r#"
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<table name="test">
+    <column name="test" type="integer"/>
+</table>"#;
+            let _: Table = quick_xml::de::from_str(raw)?;
             Ok(())
         }
 
