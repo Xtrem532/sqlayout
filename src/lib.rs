@@ -8,6 +8,7 @@
 //#![warn(missing_docs)]
 mod error;
 
+use std::default::Default;
 #[cfg(feature = "xml-config")]
 use serde::{Serialize, Deserialize};
 
@@ -23,13 +24,25 @@ pub use error::{Error, Result};
 #[cfg(feature = "rusqlite")]
 use crate::error::{CheckError, ExecError};
 
-// this cannot be in the test mod b/c it is needed for the test trait impls (SQLPart::possibilities)
+// region Test Preamble
+// these cannot be in the test mod b/c it is necessary for the test trait impls (SQLPart::possibilities)
+
 #[cfg(test)]
 fn option_iter<T: Clone>(input: Vec<Box<T>>) -> Vec<Option<T>> {
     let mut ret: Vec<Option<T>> = input.iter().map(|boxed| Some(*boxed.clone())).collect::<Vec<Option<T>>>();
     ret.push(None);
     ret
 }
+
+#[cfg(all(test, feature = "xml-config"))]
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AnySql {
+    Schema(Schema),
+    Table(Table),
+    View(View),
+}
+
+// endregion
 
 // region Traits
 
@@ -45,8 +58,8 @@ trait SQLPart {
     fn possibilities(illegal_variants: bool) -> Vec<Box<Self>>;
 }
 
-/// Any struct implementing this trait can be converted into a SQL statement [String].
-/// Optionally, the statement can be wrapped in a SQL Transaction and/or guarded against already existing Tables with a `...IF NOT EXISTS...` guard.
+/// Any struct implementing this trait can be converted into an SQL statement [String].
+/// Optionally, the statement can be wrapped in an SQL Transaction and/or guarded against already existing Tables with a `...IF NOT EXISTS...` guard.
 pub trait SQLStatement {
     /// Calculates the exact length of the statement as it is currently configured.
     /// Any change to the configuration invalidates previously calculated lengths.
@@ -58,7 +71,7 @@ pub trait SQLStatement {
     /// Arguments:
     ///
     /// * `transaction`: Weather the SQL-Statement should be wrapped in a SQL-Transaction
-    /// * `if_exists`: Weather the `CREATE TABLE...` Statement should include a `...IF NOT EXISTS...` guard
+    /// * `if_exists`: Weather the `CREATE TABLE...` statement should include a `...IF NOT EXISTS...` guard
     fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String>;
 
     // todo: for no-std
@@ -72,12 +85,15 @@ pub trait SQLStatement {
         Ok(())
     }
 
-    /// Checks the given DB for deviations from the given SQL
-    /// If the check could not be completed, a [CheckError] is returned
-    /// If the check was completed but found discrepancies, a [String] with a human-readable Description is returned
-    /// If the check was completed and found no discrepancies, [None] is returned
+    /// Checks the given DB for deviations from the given SQL.
+    /// If the check could not be completed, a [CheckError] is returned.
+    /// If the check was completed but found discrepancies, a [String] with a human-readable Description is returned.
+    /// If the check was completed and found no discrepancies, [None] is returned.
     #[cfg(feature = "rusqlite")]
     fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError>;
+
+    #[cfg(all(test, feature = "xml-config"))]
+    fn to_any(self) -> AnySql;
 }
 
 // endregion
@@ -86,7 +102,11 @@ pub trait SQLStatement {
 
 /// Encodes all Column-Datatypes available in SQLite, see [here](https://www.sqlite.org/datatype3.html#type_affinity).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[cfg_attr(
+    feature = "xml-config",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "snake_case")
+)]
 #[allow(missing_docs)]
 pub enum SQLiteType {
     // ref. https://www.sqlite.org/datatype3.html#type_affinity
@@ -94,7 +114,7 @@ pub enum SQLiteType {
     Numeric,
     Integer,
     Real,
-    Text
+    Text,
 }
 
 impl Default for SQLiteType {
@@ -138,11 +158,15 @@ impl SQLPart for SQLiteType {
 
 /// [PrimaryKey] direction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[cfg_attr(
+    feature = "xml-config",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "snake_case")
+)]
 #[allow(missing_docs)]
 pub enum Order {
     Ascending,
-    Descending
+    Descending,
 }
 
 impl Default for Order {
@@ -180,14 +204,18 @@ impl SQLPart for Order {
 /// Reaction to a violated Constraint, used by [PrimaryKey], [NotNull] and [Unique].
 /// See also [here](https://www.sqlite.org/lang_conflict.html)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename_all = "snake_case"))]
+#[cfg_attr(
+    feature = "xml-config",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "snake_case")
+)]
 #[allow(missing_docs)]
 pub enum OnConflict {
     Rollback,
     Abort,
     Fail,
     Ignore,
-    Replace
+    Replace,
 }
 
 impl Default for OnConflict {
@@ -394,7 +422,7 @@ impl SQLPart for PrimaryKey {
 
 // region Not Null
 
-/// Marks a [Column] as `NOT NULL`, e.g. the Column cannot contain `NULL` values and trying to insert `NULL` values is an Error.
+/// Marks a [Column] as `NOT NULL`, meaning the Column cannot contain `NULL` values and trying to insert `NULL` values is an Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct NotNull {
@@ -440,7 +468,7 @@ impl SQLPart for NotNull {
 
 // region Unique
 
-/// Marks a [Column] as "Unique", e.g. the Column cannot contain the same value twice and trying to insert a value for the second time is an Error.
+/// Marks a [Column] as "Unique", meaning the Column cannot contain the same value twice, and trying to insert a value for the second time is an Error.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
 pub struct Unique {
@@ -606,8 +634,8 @@ impl SQLPart for ForeignKey {
     #[cfg(test)]
     fn possibilities(illegal: bool) -> Vec<Box<Self>> {
         let mut ret: Vec<Box<Self>> = Vec::new();
-        for tbl in [if illegal { "".to_string() } else { "test".to_string() } , "test".to_string()] {
-            for col in [if illegal { "".to_string() } else { "test".to_string() } , "test".to_string()] {
+        for tbl in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
+            for col in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
                 for on_del in option_iter(FKOnAction::possibilities(false)) {
                     for on_upd in option_iter(FKOnAction::possibilities(false)) {
                         for defer in [true, false] {
@@ -638,7 +666,7 @@ pub struct Generated {
 impl Generated {
     fn check(&self) -> Result<()> {
         if self.expr.is_empty() {
-            return Err(Error::EmptyGeneratorExpr)
+            return Err(Error::EmptyGeneratorExpr);
         }
         Ok(())
     }
@@ -646,11 +674,11 @@ impl Generated {
     pub fn new(expr: String, generated_as: Option<GeneratedAs>) -> Self {
         Self {
             expr,
-            generated_as
+            generated_as,
         }
     }
 
-    pub fn new_default(expr: String,) -> Self {
+    pub fn new_default(expr: String) -> Self {
         Self {
             expr,
             generated_as: Default::default(),
@@ -734,15 +762,15 @@ pub struct Column {
 impl Column {
     fn check(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(Error::EmptyColumnName)
+            return Err(Error::EmptyColumnName);
         }
 
         if self.pk.is_some() && self.fk.is_some() {
-            return Err(Error::PrimaryKeyAndForeignKey)
+            return Err(Error::PrimaryKeyAndForeignKey);
         }
 
         if self.pk.is_some() && self.unique.is_some() {
-            return Err(Error::PrimaryKeyAndUnique)
+            return Err(Error::PrimaryKeyAndUnique);
         }
 
         Ok(())
@@ -861,14 +889,14 @@ impl SQLPart for Column {
     fn possibilities(illegal: bool) -> Vec<Box<Self>> {
         let mut ret: Vec<Box<Self>> = Vec::new();
         for typ in SQLiteType::possibilities(false) {
-            for name in [if illegal { "".to_string() } else { "test".to_string() } , "test".to_string()] {
+            for name in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
                 for pk in option_iter(PrimaryKey::possibilities(false)) {
                     for unique in option_iter(Unique::possibilities(false)) {
                         for fk in option_iter(ForeignKey::possibilities(illegal)) {
                             for nn in option_iter(NotNull::possibilities(false)) {
                                 for gen in option_iter(Generated::possibilities(illegal)) {
                                     if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
-                                        continue
+                                        continue;
                                     }
                                     ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn, gen)));
                                 }
@@ -884,13 +912,251 @@ impl SQLPart for Column {
 
 // endregion
 
+// region ViewColumn
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
+pub struct ViewColumn {
+    #[cfg_attr(feature = "xml-config", serde(rename = "@name"))]
+    name: String,
+}
+
+impl ViewColumn {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+        }
+    }
+
+    pub fn set_name(mut self, name: String) {
+        self.name = name;
+    }
+}
+
+impl SQLPart for ViewColumn {
+    fn part_len(&self) -> Result<usize> {
+        Ok(self.name.len())
+    }
+
+    fn part_str(&self, sql: &mut String) -> Result<()> {
+        sql.push_str(self.name.as_str());
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn possibilities(_illegal_variants: bool) -> Vec<Box<Self>> {
+        let mut ret: Vec<Box<Self>> = Vec::new();
+        ret.push(Box::new(ViewColumn::new("test".to_string())));
+        ret
+    }
+}
+
+// endregion
+
+// region View
+
+/// Represents an entire View, which may be Part of a wider [Schema] or used standalone.
+/// Can be converted into an SQL Statement via the [SQLStatement] Methods.
+/// It is an Error for the `name` to be empty ([Error::EmptyViewName]) or the Select to be empty ([Error::EmptyViewSelect]).
+#[derive(Debug, Clone, Eq)]
+#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename = "view"))]
+pub struct View {
+    #[cfg_attr(feature = "xml-config", serde(rename = "@name"))]
+    name: String,
+    #[cfg_attr(feature = "xml-config", serde(rename = "@temp", default))]
+    temp: bool,
+    #[cfg_attr(feature = "xml-config", serde(rename = "column"))]
+    columns: Vec<ViewColumn>,
+    #[cfg_attr(feature = "xml-config", serde(rename = "@select"))]
+    select: String,
+    #[cfg_attr(feature = "xml-config", serde(skip))]
+    pub(crate) if_exists: bool,
+}
+
+impl View {
+    fn check(&self) -> Result<()> {
+        if self.name.is_empty() {
+            return Err(Error::EmptyViewName);
+        }
+        if self.select.is_empty() {
+            return Err(Error::EmptyViewSelect);
+        }
+        Ok(())
+    }
+
+    pub fn new(name: String, temp: bool, columns: Vec<ViewColumn>, select: String) -> Self {
+        Self {
+            name,
+            temp,
+            columns,
+            select,
+            if_exists: false,
+        }
+    }
+
+    pub fn new_default(name: String, select: String) -> Self {
+        Self {
+            name,
+            temp: Default::default(),
+            columns: Default::default(),
+            select,
+            if_exists: Default::default(),
+        }
+    }
+
+    pub fn add_column(mut self, column: ViewColumn) -> Self {
+        self.columns.push(column);
+        self
+    }
+
+    pub fn set_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn set_temp(mut self, temp: bool) -> Self {
+        self.temp = temp;
+        self
+    }
+
+    pub fn set_select(mut self, select: String) -> Self {
+        self.select = select;
+        self
+    }
+}
+
+impl SQLPart for View {
+    fn part_len(&self) -> Result<usize> {
+        self.check()?;
+        let pre_coll: usize = 7 // "CREATE "
+            + self.temp as usize * 10 // "TEMPORARY "
+            + 5 // "VIEW "
+            + self.if_exists as usize * 14 // "IF NOT EXISTS "
+            + self.name.len()
+            + 2; // " ("
+
+        let post_coll: usize = 5 // ") AS "
+            + self.select.len();
+
+        if self.columns.is_empty() {
+            return Err(Error::NoColumns);
+        }
+        let coll: usize = {
+            let mut cnt: usize = 0;
+            for coll in self.columns.iter() {
+                cnt += 2; // " ,"
+                cnt += coll.part_len()?;
+            }
+            cnt - 2 // remove last " ,"
+        };
+        Ok(pre_coll + coll + post_coll)
+    }
+
+    fn part_str(&self, sql: &mut String) -> Result<()> {
+        self.check()?;
+
+        sql.push_str("CREATE ");
+        if self.temp {
+            sql.push_str("TEMPORARY ");
+        }
+        sql.push_str("VIEW ");
+        if self.if_exists {
+            sql.push_str("IF NOT EXISTS ");
+        }
+        sql.push_str(&self.name);
+        if !self.columns.is_empty() {
+            sql.push_str(" (");
+            let mut first: bool = true;
+            for coll in self.columns.iter() {
+                if !first {
+                    sql.push_str(", ");
+                } else {
+                    first = false;
+                }
+                coll.part_str(sql)?;
+            }
+            sql.push(')');
+        }
+        sql.push_str(" AS ");
+        sql.push_str(&self.select);
+
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn possibilities(illegal: bool) -> Vec<Box<Self>> {
+        let mut ret: Vec<Box<Self>> = Vec::new();
+        for name in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
+            for select in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
+                for temp in [true, false] {
+                    for col_num in [if illegal { 0 } else { 3 }, 1, 2] {
+                        let mut cols: Vec<ViewColumn> = Vec::new();
+                        for n in 0..col_num {
+                            cols.push(ViewColumn::new(format!("test{}", n)))
+                            // todo not all column possibilities
+                        }
+                        ret.push(Box::new(View::new(name.clone(), temp, cols, select.clone())));
+                    }
+                }
+            }
+        }
+        ret
+    }
+}
+
+impl SQLStatement for View {
+    fn len(&mut self, transaction: bool, if_exists: bool) -> Result<usize> {
+        self.if_exists = if_exists;
+        Ok(transaction as usize * 7 + self.part_len()? + 1 + transaction as usize * 5)
+    }
+
+    fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String> {
+        let mut str = String::with_capacity(self.len(transaction, if_exists)?);
+        if transaction {
+            str.push_str("BEGIN;\n");
+        }
+        self.part_str(&mut str)?;
+        str.push(';');
+        if transaction {
+            str.push_str("\nEND;");
+        }
+        Ok(str)
+    }
+
+    #[cfg(feature = "rusqlite")]
+    fn check_db(&mut self, _conn: &Connection) -> Result<Option<String>, CheckError> {
+        todo!()
+    }
+
+    #[cfg(all(test, feature = "xml-config"))]
+    fn to_any(self) -> AnySql {
+        AnySql::View(self)
+    }
+}
+
+impl PartialEq<Self> for View {
+    fn eq(&self, other: &Self) -> bool {
+        if self.name != other.name || self.temp != other.temp || self.select != other.select {
+            return false;
+        }
+        for columns in self.columns.iter().zip(other.columns.iter()) {
+            if columns.0 != columns.1 {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+// endregion
+
 // region Table
 
 /// Represents an entire Table, which may be Part of a wider [Schema] or used standalone.
 /// Can be converted into an SQL Statement via the [SQLStatement] Methods.
 /// It is an Error for the `name` to be empty ([Error::EmptyTableName]) or the Table itself to be empty ([Error::NoColumns]).
 #[derive(Debug, Clone, Eq)]
-#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename = "table"))]
 pub struct Table {
     #[cfg_attr(feature = "xml-config", serde(rename = "@name"))]
     name: String,
@@ -922,7 +1188,7 @@ impl Table {
         }
 
         if self.columns.is_empty() {
-            return Err(Error::NoColumns)
+            return Err(Error::NoColumns);
         }
 
         if self.without_rowid && !has_pk {
@@ -945,9 +1211,9 @@ impl Table {
         Self {
             name,
             columns: Vec::new(),
-            without_rowid: false,
-            strict: false,
-            if_exists: false
+            without_rowid: Default::default(),
+            strict: Default::default(),
+            if_exists: Default::default(),
         }
     }
 
@@ -981,15 +1247,15 @@ impl SQLPart for Table {
         }
         Ok(
             13  // "CREATE TABLE "
-            + self.if_exists as usize * 14 // "IF NOT EXISTS "
-            + self.name.len()
-            + 2 // " ("
-            + cols_len
-            + self.columns.len() - 1 // commas for cols, -1 b/c the last doesn't have a comma
-            + 1 // ')'
-            + self.without_rowid as usize * 14 // " WITHOUT ROWID"
-            + ((self.without_rowid && self.strict) as usize) // ','
-            + self.strict as usize * 7 // " STRICT"
+                + self.if_exists as usize * 14 // "IF NOT EXISTS "
+                + self.name.len()
+                + 2 // " ("
+                + cols_len
+                + self.columns.len() - 1 // commas for cols, -1 b/c the last doesn't have a comma
+                + 1 // ')'
+                + self.without_rowid as usize * 14 // " WITHOUT ROWID"
+                + ((self.without_rowid && self.strict) as usize) // ','
+                + self.strict as usize * 7 // " STRICT"
         )
     }
 
@@ -1017,7 +1283,7 @@ impl SQLPart for Table {
         if self.without_rowid {
             sql.push_str(" WITHOUT ROWID");
         }
-        if self.without_rowid && self.strict  {
+        if self.without_rowid && self.strict {
             sql.push(',');
         }
         if self.strict {
@@ -1029,7 +1295,7 @@ impl SQLPart for Table {
     #[cfg(test)]
     fn possibilities(illegal: bool) -> Vec<Box<Self>> {
         let mut ret: Vec<Box<Self>> = Vec::new();
-        for name in [if illegal { "".to_string() } else { "test".to_string() } , "test".to_string()] {
+        for name in [if illegal { "".to_string() } else { "test".to_string() }, "test".to_string()] {
             for wo_rowid in [true, false] {
                 for col_num in [if illegal { 0 } else { 3 }, 1, 2] {
                     let mut cols: Vec<Column> = Vec::new();
@@ -1074,8 +1340,8 @@ impl SQLStatement for Table {
         Ok(transaction as usize * 7 + self.part_len()? + 1 + transaction as usize * 5)
     }
 
-    fn build(&mut self, transaction: bool, if_exist: bool) -> Result<String> {
-        let mut str = String::with_capacity(self.len(transaction, if_exist)?);
+    fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String> {
+        let mut str = String::with_capacity(self.len(transaction, if_exists)?);
         if transaction {
             str.push_str("BEGIN;\n");
         }
@@ -1101,7 +1367,7 @@ impl SQLStatement for Table {
         }
 
         if let Some(_) = rows.next()? {
-            write!(ret, "Found two Tables with name '{}'", self.name)?;
+            write!(ret, "Found two Tables with the name '{}'", self.name)?;
         }
 
         if ret.is_empty() {
@@ -1110,10 +1376,15 @@ impl SQLStatement for Table {
             Ok(Some(ret))
         }
     }
+
+    #[cfg(all(test, feature = "xml-config"))]
+    fn to_any(self) -> AnySql {
+        AnySql::Table(self)
+    }
 }
 
-impl PartialEq<Table> for Table {
-    fn eq(&self, other: &Table) -> bool {
+impl PartialEq<Self> for Table {
+    fn eq(&self, other: &Self) -> bool {
         if self.name != other.name {
             return false;
         }
@@ -1145,17 +1416,16 @@ impl PartialEq<Table> for Table {
 #[derive(Debug, Clone, Default, Eq)]
 #[cfg_attr(feature = "xml-config", derive(Serialize, Deserialize), serde(rename = "schema"))]
 pub struct Schema {
-    #[cfg_attr(feature = "xml-config", serde(rename = "table"))]
+    #[cfg_attr(feature = "xml-config", serde(rename = "table"), serde(default))]
     tables: Vec<Table>,
-    #[cfg(feature = "xml-config")]
-    #[cfg_attr(feature = "xml-config", serde(rename = "@xmlns"))]
-    xmlns: &'static str,
+    #[cfg_attr(feature = "xml-config", serde(rename = "view"), serde(default))]
+    views: Vec<View>,
 }
 
 impl Schema {
     fn check(&self) -> Result<()> {
         if self.tables.is_empty() {
-            return Err(Error::SchemaWithoutTables);
+            return Err(Error::EmptySchema);
         }
         Ok(())
     }
@@ -1163,13 +1433,17 @@ impl Schema {
     pub fn new() -> Self {
         Self {
             tables: Vec::new(),
-            #[cfg(feature = "xml-config")]
-            xmlns: "https://crates.io/crates/sqlayout"
+            views: Vec::new(),
         }
     }
 
     pub fn add_table(mut self, new_table: Table) -> Self {
         self.tables.push(new_table);
+        self
+    }
+
+    pub fn add_view(mut self, new_view: View) -> Self {
+        self.views.push(new_view);
         self
     }
 }
@@ -1182,7 +1456,12 @@ impl SQLStatement for Schema {
             tbl.if_exists = if_exists;
             tables_len += tbl.part_len()?;
         }
-        Ok(transaction as usize * 7 + tables_len + self.tables.len() + transaction as usize * 5)
+        let mut views_len: usize = 0;
+        for view in &mut self.views {
+            view.if_exists = if_exists;
+            views_len += view.part_len()?;
+        }
+        Ok(transaction as usize * 7 + tables_len + self.tables.len() + views_len + self.views.len() + transaction as usize * 5)
     }
 
     fn build(&mut self, transaction: bool, if_exists: bool) -> Result<String> {
@@ -1205,7 +1484,7 @@ impl SQLStatement for Schema {
 
     #[cfg(feature = "rusqlite")]
     fn check_db(&mut self, conn: &Connection) -> Result<Option<String>, CheckError> {
-        self.tables.sort_unstable_by_key(| table: &Table | table.name.clone()); // todo ugly :(
+        self.tables.sort_unstable_by_key(|table: &Table| table.name.clone()); // todo ugly :(
 
         let mut ret: String = String::new();
 
@@ -1213,13 +1492,13 @@ impl SQLStatement for Schema {
         let mut rows: Rows = stmt.query(())?;
 
 
-        for( num, table) in self.tables.iter().enumerate() {
+        for (num, table) in self.tables.iter().enumerate() {
             let row: &Row = {
                 let raw_row = rows.next()?;
                 match raw_row {
                     None => {
                         write!(ret, "Table {}: expected table '{}', got nothing; ", num, table.name)?;
-                        break
+                        break;
                     }
                     Some(row) => { row }
                 }
@@ -1238,6 +1517,11 @@ impl SQLStatement for Schema {
         } else {
             Ok(Some(ret))
         }
+    }
+
+    #[cfg(all(test, feature = "xml-config"))]
+    fn to_any(self) -> AnySql {
+        AnySql::Schema(self)
     }
 }
 
@@ -1284,7 +1568,7 @@ mod tests {
 
     #[cfg(not(feature = "rusqlite"))]
     fn test_sql<S: SQLStatement>(_stmt: &mut S) -> Result<()> {
-        // todo
+        // todo ???
         Ok(())
     }
 
@@ -1489,7 +1773,6 @@ mod tests {
         assert_eq!(str.len(), Unique::new(OnConflict::Replace).part_len()?);
 
         Ok(())
-
     }
 
     #[test]
@@ -1561,6 +1844,32 @@ mod tests {
     }
 
     #[test]
+    fn test_view() -> Result<()> {
+        'poss: for mut possible in View::possibilities(false).into_iter().map(|boxed| *boxed) {
+            
+            for col in &possible.columns {
+                if col.name.is_empty() {
+                    assert_eq!(col.part_len(), Err(Error::EmptyColumnName));
+                    continue 'poss;
+                }
+            }
+            
+            if possible.name.is_empty() {
+                assert_eq!(possible.part_len(), Err(Error::EmptyViewName));
+                continue;
+            }
+            if possible.select.is_empty() {
+                assert_eq!(possible.part_len(), Err(Error::EmptyViewSelect));
+                continue;
+            }
+            
+            test_sql_part(&possible)?;
+            test_sql(&mut possible)?
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_table() -> Result<()> {
         'poss: for mut possible in Table::possibilities(false).into_iter().map(|boxed| *boxed) {
             let mut has_pk: bool = false;
@@ -1603,7 +1912,7 @@ mod tests {
     fn test_schema() -> Result<()> {
         {
             let mut schema: Schema = Schema::new();
-            assert_eq!(schema.len(false, false), Err(Error::SchemaWithoutTables));
+            assert_eq!(schema.len(false, false), Err(Error::EmptySchema));
         }
         for num_tbl in 1..3 {
             let mut schema: Schema = Schema::new();
@@ -1622,27 +1931,82 @@ mod tests {
     mod xml_tests {
         use super::*;
 
+        #[allow(dead_code)]
+        impl AnySql {
+
+            fn serialized(&self) -> Result<&'static str> {
+                Ok(match self {
+                    AnySql::Schema(s) => {Box::leak(quick_xml::se::to_string(s)?.into_boxed_str())}
+                    AnySql::Table(t) => {Box::leak(quick_xml::se::to_string(t)?.into_boxed_str())}
+                    AnySql::View(v) => {Box::leak(quick_xml::se::to_string(v)?.into_boxed_str())}
+                })
+            }
+
+            fn deserialize_schema(xml: &'static str) -> Result<Self> {
+                Ok(Self::Schema(from_str(xml)?))
+            }
+
+            fn deserialize_table(xml: &'static str) -> Result<Self> {
+                Ok(Self::Table(from_str(xml)?))
+            }
+
+            fn deserialize_view(xml: &'static str) -> Result<Self> {
+                Ok(Self::View(from_str(xml)?))
+            }
+
+            fn serialize_deserialize(self) -> Result<&'static str> {
+                let xml = self.serialized()?;
+
+                let deserialized: Self = match self {
+                    Self::Schema(_) => {Self::deserialize_schema(xml)?},
+                    Self::Table(_) => {Self::deserialize_table(xml)?},
+                    Self::View(_) => {Self::deserialize_view(xml)?},
+                };
+
+                assert_eq!(deserialized, self);
+                Ok(xml)
+            }
+
+            fn deserialize_serialize_inner(self, original_xml: & 'static str) -> Result<Self> {
+                let new_xml: &'static str = self.serialized()?;
+                assert_eq!(new_xml, original_xml);
+                Ok(self)
+            }
+
+            fn deserialize_serialize_schema(xml: &'static str) -> Result<Self> {
+                Self::deserialize_serialize_inner(Self::deserialize_schema(xml)?, xml)
+            }
+
+            fn deserialize_serialize_table(xml: &'static str) -> Result<Self> {
+                Self::deserialize_serialize_inner(Self::deserialize_table(xml)?, xml)
+            }
+
+            fn deserialize_serialize_view(xml: &'static str) -> Result<Self> {
+                Self::deserialize_serialize_inner(Self::deserialize_view(xml)?, xml)
+            }
+        }
+
         #[test]
         fn test_serialize_deserialize() -> Result<()> {
             let tbl = Table::new_default("TestName".to_string()).add_column(Column::new_default("TestCol".to_string()));
-            let tbl2  = tbl.clone().set_name("TestName2".to_string());
-            let schema = Schema::new().add_table(tbl).add_table(tbl2);
-            // todo: this is bullshit
-            let serialized: &'static str = Box::leak(quick_xml::se::to_string(&schema)?.into_boxed_str());
-            println!("Serialized XML: \n{}", serialized);
-            let deserialized: Schema = quick_xml::de::from_str(serialized)?;
-            assert_eq!(schema, deserialized);
+            let tbl2 = tbl.clone().set_name("TestName2".to_string());
+            let view = View::new_default("TestView".to_string(), "Select".to_string()).add_column(ViewColumn::new("TestCol".to_string()));
+            let schema = Schema::new().add_table(tbl.clone()).add_table(tbl2.clone()).add_view(view.clone());
+            schema.to_any().serialize_deserialize()?;
+            tbl.to_any().serialize_deserialize()?;
+            tbl2.to_any().serialize_deserialize()?;
+            view.to_any().serialize_deserialize()?;
             Ok(())
         }
 
         #[test]
-        fn test_top_level_table() -> Result<()> {
-            let raw: &str = r#"
-<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
-<table name="test">
-    <column name="test" type="integer"/>
-</table>"#;
-            let _: Table = quick_xml::de::from_str(raw)?;
+        fn test_deserialize_serialize() -> Result<()> {
+            let table_xml: &'static str = r#"<table name="test" without_rowid="false" strict="false"><column type="integer" name="test"/></table>"#;
+            let view_xml: &'static str = r#"<view name="test" temp="false" select="SelectStatement"><column name="test"/></view>"#;
+            let schema_xml: &'static str = Box::leak(("<schema>".to_string() + table_xml + view_xml + "</schema>").into_boxed_str());
+            AnySql::deserialize_serialize_table(table_xml)?;
+            AnySql::deserialize_serialize_view(view_xml)?;
+            AnySql::deserialize_serialize_schema(schema_xml)?;
             Ok(())
         }
 
@@ -1728,6 +2092,18 @@ mod tests {
 </schema>
 "#;
             let _: Schema = quick_xml::de::from_str(raw)?;
+            Ok(())
+        }
+
+        #[test]
+        fn xmlns_test() -> Result<()> {
+            let tbl: Table = Table::new_default("test".to_string()).add_column(Column::new_default("testcol".to_string()));
+            let sch: Schema = Schema::new().add_table(tbl.clone());
+
+            let xml: String = quick_xml::se::to_string(&sch)?;
+            println!("Schema XML:\n{}", xml);
+            let xml: String = quick_xml::se::to_string(&tbl)?;
+            println!("Table XML:\n{}", xml);
             Ok(())
         }
     }

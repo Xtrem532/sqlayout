@@ -33,10 +33,18 @@ pub enum Error {
     /// Error used when a [Generated](crate::Generated) [Column](crate::Column) has an empty Expression
     #[error("Generator Expression cannot be empty")]
     EmptyGeneratorExpr,
+    
+    /// Error used when a [View](crate::View) has an empty `select`
+    #[error("View Select cannot be empty")]
+    EmptyViewSelect,
 
     /// Error used when a [Table](crate::Table) has an empty `name`
     #[error("Table Name cannot be Empty")]
     EmptyTableName,
+
+    /// Error used when a [View](crate::View) has an empty `name`
+    #[error("View Name cannot be Empty")]
+    EmptyViewName,
 
     /// Error used when a [Table](crate::Table) has no [Columns](crate::Column)
     #[error("Table must have Columns")]
@@ -51,9 +59,9 @@ pub enum Error {
     #[error("Tables without rowid must have one Primary Key")]
     WithoutRowidNoPrimaryKey,
 
-    /// Error used when a [Schema](crate::Schema) has no [Tables](crate::Table)
-    #[error("Schema must contain Tables")]
-    SchemaWithoutTables,
+    /// Error used when a [Schema](crate::Schema) has no [Tables](crate::Table) or [Views](crate::View)
+    #[error("Schema must not be empty")]
+    EmptySchema,
 }
 
 #[cfg(feature = "rusqlite")]
@@ -80,5 +88,5 @@ pub enum ExecError {
     Error(#[from] Error),
 }
 
-/// Result type used in this crate, Error type is [Error]
+/// Result type used in this crate, Error type is [enum@Error]
 pub type Result<T, E = Error> = std::result::Result<T, E>;

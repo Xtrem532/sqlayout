@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           targetNamespace="https://crates.io/crates/sqlayout"
-           elementFormDefault="qualified">
+           targetNamespace="https://crates.io/crates/sqlayout">
   <!--region Enums-->
 
   <xs:simpleType name="non_empty_string">
@@ -29,7 +28,7 @@
     </xs:restriction>
   </xs:simpleType>
 
-  <xs:simpleType name="on_conflict_typ">
+  <xs:simpleType name="on_conflict_type">
     <xs:restriction base="xs:string">
       <xs:enumeration value="Rollback"/>
       <xs:enumeration value="Abort"/>
@@ -58,7 +57,7 @@
 
   <!--endregion-->
 
-  <xs:attribute name="on_conflict" type="on_conflict_typ"/>
+  <xs:attribute name="on_conflict" type="on_conflict_type"/>
 
   <xs:complexType name="pk">
     <xs:attribute name="order" type="order" use="optional"/>
@@ -99,6 +98,19 @@
     <xs:attribute name="type" type="type" use="required"/>
   </xs:complexType>
 
+  <xs:complexType name="view_column">
+    <xs:attribute name="name" type="non_empty_string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="view" >
+    <xs:sequence>
+      <xs:element name="column" type="view_column" maxOccurs="unbounded"/>
+    </xs:sequence>
+    <xs:attribute name="name" type="non_empty_string" use="required"/>
+    <xs:attribute name="temp" type="xs:boolean" use="optional"/>
+    <xs:attribute name="select" type="non_empty_string" use="required"/>
+  </xs:complexType>
+
   <xs:complexType name="table">
     <xs:sequence>
       <xs:element name="column" type="column" minOccurs="1" maxOccurs="unbounded"/>
@@ -108,13 +120,19 @@
     <xs:attribute name="strict" type="xs:boolean" use="optional"/>
   </xs:complexType>
 
-  <xs:element name="schema">
-    <xs:complexType>
+  <xs:complexType name="schema">
+    <xs:sequence>
       <xs:sequence>
         <xs:element name="table" type="table" minOccurs="1" maxOccurs="unbounded"/>
       </xs:sequence>
-    </xs:complexType>
-  </xs:element>
+      <xs:sequence>
+        <xs:element name="view" type="view" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:sequence>
+  </xs:complexType>
 
+  <!-- Possible root elements -->
+  <xs:element name="schema" type="schema"/>
   <xs:element name="table" type="table"/>
+  <xs:element name="view" type="view"/>
 </xs:schema>
