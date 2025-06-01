@@ -10,6 +10,7 @@
     categories = ["database", "config"]
     exclude = ["*.xml", "/.idea"]
     repository = "https://github.com/Xtrem532/sqlayout"
+    rust-version = "1.78.0"
 
 [features]
     xml-config = ["dep:quick-xml", "dep:serde"]
