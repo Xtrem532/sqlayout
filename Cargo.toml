@@ -1,6 +1,6 @@
 [package]
     name = "sqlayout"
-    version = "0.3.0"  # cargo public-api -sss diff latest
+    version = "0.3.1"  # cargo public-api -sss diff latest
     edition = "2021"
     authors = ["Xtrem532"]
     license = "LGPL-2.1-only"
