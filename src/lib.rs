@@ -894,11 +894,11 @@ impl SQLPart for Column {
                     for unique in option_iter(Unique::possibilities(false)) {
                         for fk in option_iter(ForeignKey::possibilities(illegal)) {
                             for nn in option_iter(NotNull::possibilities(false)) {
-                                for gen in option_iter(Generated::possibilities(illegal)) {
+                                for gened in option_iter(Generated::possibilities(illegal)) {
                                     if !illegal && pk.is_some() && (fk.is_some() || unique.is_some()) {
                                         continue;
                                     }
-                                    ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn, gen)));
+                                    ret.push(Box::new(Self::new(*typ.clone(), name.clone(), pk.clone(), unique, fk.clone(), nn, gened)));
                                 }
                             }
                         }
@@ -1822,10 +1822,10 @@ mod tests {
                 for uniq in [None, Some(Unique::default())] {
                     for fk in [None, Some(ForeignKey::new_default("test".to_string(), "test".to_string()))] {
                         for nn in [None, Some(NotNull::default())] {
-                            for gen in [None, Some(Generated::new_default("expr".to_string()))] {
-                                assert_eq!(Column::new(typ, "".to_string(), pk.clone(), uniq, fk.clone(), nn, gen.clone()).part_len(), Err(Error::EmptyColumnName));
+                            for gened in [None, Some(Generated::new_default("expr".to_string()))] {
+                                assert_eq!(Column::new(typ, "".to_string(), pk.clone(), uniq, fk.clone(), nn, gened.clone()).part_len(), Err(Error::EmptyColumnName));
 
-                                let col: Column = Column::new(typ, "test".to_string(), pk.clone(), uniq, fk.clone(), nn, gen);
+                                let col: Column = Column::new(typ, "test".to_string(), pk.clone(), uniq, fk.clone(), nn, gened);
 
                                 if col.pk.is_some() && col.fk.is_some() {
                                     assert_eq!(col.part_len(), Err(Error::PrimaryKeyAndForeignKey));

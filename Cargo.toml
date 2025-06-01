@@ -1,16 +1,16 @@
 [package]
     name = "sqlayout"
-    version = "0.3.1"  # cargo public-api -sss diff latest
-    edition = "2021"
+    version = "0.4.0"  # cargo public-api -sss diff latest
+    edition = "2024"
     authors = ["Xtrem532"]
     license = "LGPL-2.1-only"
-    description = "Generate SQL-code for creating SQLite databases via Builder API or XML config"
+    description = "Generate SQL for creating SQLite databases via Builder API or XML config"
     readme = "readme.md"
     keywords = ["SQL", "SQLite", "Database", "Schema"]
     categories = ["database", "config"]
     exclude = ["*.xml", "/.idea"]
     repository = "https://github.com/Xtrem532/sqlayout"
-    rust-version = "1.78.0"
+    rust-version = "1.85.0"
 
 [features]
     xml-config = ["dep:quick-xml", "dep:serde"]
